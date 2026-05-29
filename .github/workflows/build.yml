@@ -18,6 +18,11 @@ jobs:
         java-version: '17'
         distribution: 'temurin'
 
+    # این مرحله جدید: Gradle Wrapper رو اتوماتیک ایجاد می‌کنه
+    - name: Generate Gradle Wrapper
+      run: |
+        gradle wrapper --gradle-version 8.10
+
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew
 
