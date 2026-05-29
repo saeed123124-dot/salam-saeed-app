@@ -36,7 +36,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         infoText = TextView(this).apply {
-            textSize = 16f
+            textSize = 16.5f
             setTextColor(Color.DKGRAY)
             text = "در حال دریافت اطلاعات شبکه..."
         }
@@ -64,55 +64,49 @@ class MainActivity : AppCompatActivity() {
         handler.post(object : Runnable {
             override fun run() {
                 updateDetailedNetworkInfo()
-                handler.postDelayed(this, 2000) // هر ۲ ثانیه
+                handler.postDelayed(this, 2500)
             }
         })
     }
 
     private fun updateDetailedNetworkInfo() {
-        if (!checkPermissions()) {
-            infoText.text = "⚠️ مجوزهای لازم داده نشده است"
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.READ_PHONE_STATE) != PackageManager.PERMISSION_GRANTED) {
+            infoText.text = "⚠️ مجوز READ_PHONE_STATE داده نشده"
             return
         }
 
         val sb = StringBuilder()
 
-        // اطلاعات هر دو سیم‌کارت
         val subscriptionManager = getSystemService(TELEPHONY_SUBSCRIPTION_SERVICE) as SubscriptionManager
-        val activeSubscriptions = subscriptionManager.activeSubscriptionInfoList
+        val subs = subscriptionManager.activeSubscriptionInfoList ?: emptyList()
 
-        if (activeSubscriptions.isNullOrEmpty()) {
-            sb.append("هیچ سیم‌کارت فعالی یافت نشد\n")
+        if (subs.isEmpty()) {
+            sb.append("هیچ سیم‌کارت فعالی پیدا نشد\n")
         } else {
-            activeSubscriptions.forEach { sub ->
-                val tm = telephonyManager?.createForSubscriptionId(sub.subscriptionId)
-                val slot = sub.simSlotIndex + 1
+            subs.forEach { subInfo ->
+                val slot = subInfo.simSlotIndex + 1
+                val subId = subInfo.subscriptionId
+                val tm = telephonyManager?.createForSubscriptionId(subId)
 
-                sb.append("━━━━━━━━━━━━━━━━━━\n")
-                sb.append("🔴 سیم‌کارت $slot (${sub.displayName})\n")
+                sb.append("━━━━━━━━━━━━━━━━━━━━━━━\n")
+                sb.append("🔴 سیم‌کارت $slot - ${subInfo.displayName}\n")
                 sb.append("📱 اپراتور: ${tm?.networkOperatorName ?: "نامشخص"}\n")
 
-                // MCC + MNC
-                val mcc = tm?.networkOperator?.take(3) ?: "—"
-                val mnc = tm?.networkOperator?.drop(3) ?: "—"
-                sb.append("🌍 MCC: $mcc | MNC: $mnc\n")
+                val operator = tm?.networkOperator
+                sb.append("🌍 MCC: ${operator?.take(3) ?: "-"} | MNC: ${operator?.drop(3) ?: "-"}\n")
+                sb.append("🌐 نوع شبکه: ${getNetworkType(tm)}\n")
 
-                // نوع شبکه
-                sb.append("🌐 شبکه: ${getNetworkType(tm)}\n")
-
-                // اطلاعات سلول (BTS)
-                val cellInfo = getCellInfo(tm)
-                sb.append(cellInfo)
-
+                // اطلاعات سلول
+                val cellInfoStr = getCellInfoStr(tm)
+                sb.append(cellInfoStr)
                 sb.append("\n")
             }
         }
 
         infoText.text = sb.toString()
 
-        // تشخیص جمر / قطع سیگنال
-        val isJammer = isSignalVeryWeak()
-        if (isJammer) {
+        // تشخیص جمر / سیگنال ضعیف
+        if (isSignalVeryWeak()) {
             mainLayout.setBackgroundColor(Color.RED)
             infoText.setTextColor(Color.WHITE)
         } else {
@@ -123,58 +117,54 @@ class MainActivity : AppCompatActivity() {
 
     private fun getNetworkType(tm: TelephonyManager?): String {
         return when (tm?.networkType) {
-            TelephonyManager.NETWORK_TYPE_NR -> "5G NR"
+            TelephonyManager.NETWORK_TYPE_NR -> "5G"
             TelephonyManager.NETWORK_TYPE_LTE -> "4G LTE"
-            TelephonyManager.NETWORK_TYPE_HSPAP -> "3G+ (HSPA+)"
-            TelephonyManager.NETWORK_TYPE_HSPA -> "3G HSPA"
-            TelephonyManager.NETWORK_TYPE_UMTS -> "3G UMTS"
+            TelephonyManager.NETWORK_TYPE_HSPAP -> "3G+"
+            TelephonyManager.NETWORK_TYPE_HSPA -> "3G"
+            TelephonyManager.NETWORK_TYPE_UMTS -> "3G"
             TelephonyManager.NETWORK_TYPE_EDGE -> "2G EDGE"
-            TelephonyManager.NETWORK_TYPE_GPRS -> "2G GPRS"
+            TelephonyManager.NETWORK_TYPE_GPRS -> "2G"
             else -> "نامشخص"
         }
     }
 
-    private fun getCellInfo(tm: TelephonyManager?): String {
+    private fun getCellInfoStr(tm: TelephonyManager?): String {
         if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
-            return "   سلول: نیاز به مجوز لوکیشن\n"
+            return "   (نیاز به مجوز لوکیشن برای Cell ID)\n"
         }
 
-        val cellInfos = tm?.allCellInfo ?: return "   اطلاعات سلول در دسترس نیست\n"
+        val cellInfos = tm?.allCellInfo ?: return "   اطلاعات سلول موجود نیست\n"
 
         val sb = StringBuilder()
-        cellInfos.forEach { cell ->
+        for (cell in cellInfos) {
             when (cell) {
                 is CellInfoLte -> {
-                    val identity = cell.cellIdentity as CellIdentityLte
-                    sb.append("   📍 Cell ID: ${identity.cid}\n")
-                    sb.append("   🏢 TAC/LAC: ${identity.tac}\n")
-                    sb.append("   📡 PCI: ${identity.pci}\n")
-                    sb.append("   📶 قدرت: ${cell.cellSignalStrength.dbm} dBm\n")
+                    val id = cell.cellIdentity as CellIdentityLte
+                    sb.append("   📍 Cell ID: ${id.cid}\n")
+                    sb.append("   🏢 TAC: ${id.tac}\n")
+                    sb.append("   📡 PCI: ${id.pci}\n")
+                    sb.append("   📶 Signal: ${cell.cellSignalStrength.dbm} dBm\n")
                 }
                 is CellInfoNr -> {
-                    val identity = cell.cellIdentity as CellIdentityNr
-                    sb.append("   📍 5G Cell ID: ${identity.nci}\n")
-                    sb.append("   📡 PCI: ${identity.pci}\n")
-                    sb.append("   📶 قدرت: ${cell.cellSignalStrength.dbm} dBm\n")
+                    val id = cell.cellIdentity as CellIdentityNr
+                    sb.append("   📍 5G Cell ID: ${id.nci}\n")
+                    sb.append("   📡 PCI: ${id.pci}\n")
+                    sb.append("   📶 Signal: ${cell.cellSignalStrength.dbm} dBm\n")
                 }
-                // می‌توانی gsm و wcdma هم اضافه کنی اگر لازم شد
             }
         }
         return sb.toString()
     }
 
     private fun isSignalVeryWeak(): Boolean {
-        val subscriptions = (getSystemService(TELEPHONY_SUBSCRIPTION_SERVICE) as SubscriptionManager).activeSubscriptionInfoList
-        subscriptions?.forEach { sub ->
+        val subs = (getSystemService(TELEPHONY_SUBSCRIPTION_SERVICE) as SubscriptionManager).activeSubscriptionInfoList ?: return false
+        for (sub in subs) {
             val tm = telephonyManager?.createForSubscriptionId(sub.subscriptionId)
-            val strength = tm?.signalStrength?.getLevel() ?: 0
-            if (strength <= 1) return true
+            if (tm?.signalStrength?.level ?: 0 <= 1) {
+                return true
+            }
         }
         return false
-    }
-
-    private fun checkPermissions(): Boolean {
-        return ActivityCompat.checkSelfPermission(this, Manifest.permission.READ_PHONE_STATE) == PackageManager.PERMISSION_GRANTED
     }
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
