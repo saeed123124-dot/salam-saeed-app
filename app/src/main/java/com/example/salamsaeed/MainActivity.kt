@@ -3,23 +3,42 @@ package com.example.salamsaeed
 import android.Manifest
 import android.content.pm.PackageManager
 import android.graphics.Color
+import android.os.Build
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
+import android.telephony.PhoneStateListener
+import android.telephony.SignalStrength
 import android.telephony.TelephonyManager
 import android.view.Gravity
-import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 
 class MainActivity : AppCompatActivity() {
 
     private lateinit var infoText: TextView
     private lateinit var mainLayout: LinearLayout
-    private val handler = Handler(Looper.getMainLooper())
     private var telephonyManager: TelephonyManager? = null
+    private var titleView: TextView? = null  // نام متغیر را عوض کردیم تا با متغیر محلی اشتباه نشود
+
+    // گوش‌دهنده تغییرات سیگنال
+    private val phoneStateListener = object : PhoneStateListener() {
+        override fun onSignalStrengthsChanged(signalStrength: SignalStrength) {
+            updateNetworkInfo()
+        }
+    }
+
+    // درخواست مجوز به روش جدید
+    private val requestPermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { permissions ->
+            if (permissions[Manifest.permission.READ_PHONE_STATE] == true) {
+                startMonitoringSignal()
+            } else {
+                infoText.text = "⚠️ مجوز READ_PHONE_STATE الزامی است. برنامه بسته خواهد شد."
+                // می‌توانی یک finish() تأخیردار بگذاری
+            }
+        }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -30,11 +49,13 @@ class MainActivity : AppCompatActivity() {
             setPadding(40, 80, 40, 80)
         }
 
+        // عنوان را می‌سازیم و در پراپرتی کلاس ذخیره می‌کنیم
         val title = TextView(this).apply {
             text = "سلام سعید"
             textSize = 34f
             setTextColor(Color.BLACK)
         }
+        titleView = title  // این خط حیاتی قبلاً جا افتاده بود
 
         infoText = TextView(this).apply {
             textSize = 17f
@@ -48,25 +69,24 @@ class MainActivity : AppCompatActivity() {
 
         telephonyManager = getSystemService(TELEPHONY_SERVICE) as TelephonyManager
 
-        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.READ_PHONE_STATE) != PackageManager.PERMISSION_GRANTED) {
-            ActivityCompat.requestPermissions(this, 
-                arrayOf(Manifest.permission.READ_PHONE_STATE, Manifest.permission.ACCESS_COARSE_LOCATION), 101)
-        } else {
-            startUpdatingNetworkInfo()
+        // بررسی مجوز
+        when {
+            ContextCompat.checkSelfPermission(this, Manifest.permission.READ_PHONE_STATE)
+                    == PackageManager.PERMISSION_GRANTED -> startMonitoringSignal()
+            else -> requestPermissionLauncher.launch(arrayOf(Manifest.permission.READ_PHONE_STATE))
         }
     }
 
-    private fun startUpdatingNetworkInfo() {
-        handler.post(object : Runnable {
-            override fun run() {
-                updateNetworkInfo()
-                handler.postDelayed(this, 2500) // هر ۲.۵ ثانیه
-            }
-        })
+    private fun startMonitoringSignal() {
+        // استفاده از PhoneStateListener برای کاهش مصرف باتری
+        telephonyManager?.listen(phoneStateListener, PhoneStateListener.LISTEN_SIGNAL_STRENGTHS)
+        // یک بار هم بلافاصله بروز کن
+        updateNetworkInfo()
     }
 
     private fun updateNetworkInfo() {
-        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.READ_PHONE_STATE) != PackageManager.PERMISSION_GRANTED) {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_PHONE_STATE)
+                != PackageManager.PERMISSION_GRANTED) {
             infoText.text = "⚠️ مجوز READ_PHONE_STATE داده نشده است"
             return
         }
@@ -80,7 +100,6 @@ class MainActivity : AppCompatActivity() {
             TelephonyManager.SIM_STATE_PIN_REQUIRED -> "نیاز به PIN"
             else -> "نامشخص"
         }
-
         val networkType = getNetworkType()
 
         sb.append("📱 اپراتور: $operatorName\n")
@@ -90,17 +109,27 @@ class MainActivity : AppCompatActivity() {
         val signalDbm = getSignalStrengthDbm()
         sb.append("📶 قدرت سیگنال: $signalDbm dBm\n")
 
+        // اطلاعات اضافی پیشنهادی (اختیاری)
+        val dataState = getDataState()
+        sb.append("📡 وضعیت داده: $dataState\n")
+        val roaming = if (telephonyManager?.isNetworkRoaming == true) "خارج از شبکه" else "شبکه خانگی"
+        sb.append("🗺 رومینگ: $roaming\n")
+
         infoText.text = sb.toString()
 
-        // تشخیص جمر یا قطع سیگنال (زیر -110 dBm قرمز شود)
+        // تغییر رنگ بر اساس قدرت سیگنال
         if (signalDbm < -110) {
             mainLayout.setBackgroundColor(Color.RED)
             infoText.setTextColor(Color.WHITE)
-            title?.setTextColor(Color.WHITE) // عنوان هم سفید شود
+            titleView?.setTextColor(Color.WHITE)  // حالا چون titleView مقدار دارد کار می‌کند
+        } else if (signalDbm in -100..-90) {
+            mainLayout.setBackgroundColor(Color.YELLOW)
+            infoText.setTextColor(Color.BLACK)
+            titleView?.setTextColor(Color.BLACK)
         } else {
             mainLayout.setBackgroundColor(Color.WHITE)
             infoText.setTextColor(Color.DKGRAY)
-            title?.setTextColor(Color.BLACK)
+            titleView?.setTextColor(Color.BLACK)
         }
     }
 
@@ -118,26 +147,38 @@ class MainActivity : AppCompatActivity() {
 
     private fun getSignalStrengthDbm(): Int {
         val signalStrength = telephonyManager?.signalStrength ?: return -999
-        return try {
-            // روش جدیدتر برای دریافت dBm
-            val field = signalStrength.javaClass.getDeclaredField("mLevel")
-            field.isAccessible = true
-            val level = field.getInt(signalStrength)
-            when (level) {
-                4 -> -85
-                3 -> -95
-                2 -> -105
-                1 -> -115
-                else -> -120
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            // روش استاندارد API 29+
+            val cellSignals = signalStrength.cellSignalStrengths
+            if (cellSignals.isNotEmpty()) {
+                cellSignals[0].dbm   // مقدار دقیق dBm
+            } else {
+                -110
             }
-        } catch (e: Exception) {
-            -110 // مقدار پیش‌فرض
+        } else {
+            // روش قدیمی با انعکاس (بهبودیافته)
+            try {
+                val field = SignalStrength::class.java.getDeclaredMethod("getDbm")
+                field.isAccessible = true
+                field.invoke(signalStrength) as Int
+            } catch (e: Exception) {
+                -110  // مقدار پیش‌فرض
+            }
         }
     }
 
-    // متغیر title رو تعریف کنیم
-    private var title: TextView? = null
+    private fun getDataState(): String {
+        return when (telephonyManager?.dataState) {
+            TelephonyManager.DATA_CONNECTED -> "متصل"
+            TelephonyManager.DATA_SUSPENDED -> "معلق"
+            TelephonyManager.DATA_DISCONNECTED -> "قطع"
+            else -> "نامشخص"
+        }
+    }
 
-    // در onCreate بعد از ساخت title اضافه کن:
-    // title = TextView(...)   ← این خط رو داخل onCreate بعد از ساخت title اضافه کن
+    override fun onDestroy() {
+        // حذف گوش‌دهنده هنگام بستن
+        telephonyManager?.listen(phoneStateListener, PhoneStateListener.LISTEN_NONE)
+        super.onDestroy()
+    }
 }
