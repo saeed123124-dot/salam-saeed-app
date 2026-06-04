@@ -187,6 +187,9 @@ class MainActivity : AppCompatActivity() {
                 if (cellData.band != null) {
                     towerSb.append("باند فرکانسی: ${cellData.band}\n")
                 }
+                if (cellData.distanceMeters != null) {
+                    towerSb.append("📍 فاصله تقریبی: ${cellData.distanceMeters} متر\n")
+                }
                 towerSb.append("━━━━━━━━━━━━━━━━━━━\n")
             }
         } else {
@@ -264,6 +267,8 @@ class MainActivity : AppCompatActivity() {
                     val dbm = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) signal.dbm else -2300
                     val asu = if (dbm != -2300) (dbm + 141).coerceIn(0, 99) else -1
                     val band = getLteBandFromEarfcn(identity.earfcn)
+                    val ta = getTimingAdvance(cellInfo)
+                    val distance = ta?.let { it * 78 } // تقریبی ۷۸ متر برای هر واحد TA در LTE
                     cells.add(CellData(
                         type = "LTE",
                         cellId = identity.ci.toString(),  // ci برای LTE درست است
@@ -272,7 +277,8 @@ class MainActivity : AppCompatActivity() {
                         mnc = identity.mncString ?: "?",
                         signalDbm = dbm,
                         asu = asu,
-                        band = band
+                        band = band,
+                        distanceMeters = distance
                     ))
                 }
                 is CellInfoWcdma -> {
@@ -288,7 +294,8 @@ class MainActivity : AppCompatActivity() {
                         mnc = identity.mncString ?: "?",
                         signalDbm = dbm,
                         asu = asu,
-                        band = null
+                        band = null,
+                        distanceMeters = null
                     ))
                 }
                 is CellInfoGsm -> {
@@ -304,7 +311,8 @@ class MainActivity : AppCompatActivity() {
                         mnc = identity.mncString ?: "?",
                         signalDbm = dbm,
                         asu = asu,
-                        band = null
+                        band = null,
+                        distanceMeters = null
                     ))
                 }
                 is CellInfoNr -> {
@@ -316,7 +324,10 @@ class MainActivity : AppCompatActivity() {
                         val asu = if (dbm != Int.MIN_VALUE && dbm != -2300) (dbm + 141).coerceIn(0, 99) else -1
                 
                         val band = getNrBandFromNrarfcn(identity.nrarfcn)
-                
+                        
+                        val ta = getTimingAdvance(cellInfo)
+                        val distance = ta?.let { it * 78 }
+                        
                         cells.add(CellData(
                             type = "NR (5G)",
                             cellId = identity.nci.toString(),
@@ -325,7 +336,8 @@ class MainActivity : AppCompatActivity() {
                             mnc = identity.mncString ?: "?",
                             signalDbm = dbm,
                             asu = asu,
-                            band = band
+                            band = band,
+                            distanceMeters = distance
                         ))
                     }
                 }
@@ -334,6 +346,27 @@ class MainActivity : AppCompatActivity() {
         return cells
     }
 
+    private fun getTimingAdvance(cellInfo: CellInfo): Int? {
+        return when (cellInfo) {
+            is CellInfoLte -> {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                    cellInfo.cellSignalStrength.timingAdvance.takeIf { it != Int.MAX_VALUE && it != 0 }
+                } else null
+            }
+            is CellInfoNr -> {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    try {
+                        val method = cellInfo.cellSignalStrength.javaClass.getMethod("getTimingAdvance")
+                        method.invoke(cellInfo.cellSignalStrength) as? Int
+                    } catch (e: Exception) {
+                        null
+                    }
+                } else null
+            }
+            else -> null
+        }
+    }
+    
     data class CellData(
         val type: String,
         val cellId: String,
@@ -342,7 +375,8 @@ class MainActivity : AppCompatActivity() {
         val mnc: String,
         val signalDbm: Int,
         val asu: Int,
-        val band: String?
+        val band: String?,
+        val distanceMeters: Int? = null
     )
 
     private fun getLteBandFromEarfcn(earfcn: Int): String? {
