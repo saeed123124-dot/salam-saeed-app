@@ -309,11 +309,14 @@ class MainActivity : AppCompatActivity() {
                 }
                 is CellInfoNr -> {
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                        val identity = cellInfo.cellIdentity
-                        val signal = cellInfo.cellSignalStrength
+                        val identity = cellInfo.cellIdentity as CellIdentityNr
+                        val signal = cellInfo.cellSignalStrength as CellSignalStrengthNr
+                
                         val dbm = signal.dbm
-                        val asu = if (dbm != -2300) (dbm + 141).coerceIn(0, 99) else -1
+                        val asu = if (dbm != Int.MIN_VALUE && dbm != -2300) (dbm + 141).coerceIn(0, 99) else -1
+                
                         val band = getNrBandFromNrarfcn(identity.nrarfcn)
+                
                         cells.add(CellData(
                             type = "NR (5G)",
                             cellId = identity.nci.toString(),
