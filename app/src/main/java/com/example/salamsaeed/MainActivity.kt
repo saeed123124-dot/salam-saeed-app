@@ -260,6 +260,8 @@ class MainActivity : AppCompatActivity() {
         val allCellInfo = telephonyManager?.allCellInfo ?: return cells
 
         for (cellInfo in allCellInfo) {
+            val ta = getTimingAdvance(cellInfo)
+            val distance = ta?.let { calculateDistance(it, cellInfo) }
             when (cellInfo) {
                 is CellInfoLte -> {
                     val identity = cellInfo.cellIdentity
@@ -267,17 +269,16 @@ class MainActivity : AppCompatActivity() {
                     val dbm = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) signal.dbm else -2300
                     val asu = if (dbm != -2300) (dbm + 141).coerceIn(0, 99) else -1
                     val band = getLteBandFromEarfcn(identity.earfcn)
-                    val ta = getTimingAdvance(cellInfo)
-                    val distance = ta?.let { it * 78 } // تقریبی ۷۸ متر برای هر واحد TA در LTE
                     cells.add(CellData(
                         type = "LTE",
-                        cellId = identity.ci.toString(),  // ci برای LTE درست است
+                        cellId = identity.ci.toString(),
                         lac = identity.tac.toString(),
                         mcc = identity.mccString ?: "?",
                         mnc = identity.mncString ?: "?",
                         signalDbm = dbm,
                         asu = asu,
                         band = band,
+                        timingAdvance = ta,
                         distanceMeters = distance
                     ))
                 }
@@ -288,14 +289,15 @@ class MainActivity : AppCompatActivity() {
                     val asu = if (dbm != -2300) (dbm + 141).coerceIn(0, 99) else -1
                     cells.add(CellData(
                         type = "WCDMA",
-                        cellId = identity.cid.toString(),  // تصحیح: cid به جای ci
+                        cellId = identity.cid.toString(),
                         lac = identity.lac.toString(),
                         mcc = identity.mccString ?: "?",
                         mnc = identity.mncString ?: "?",
                         signalDbm = dbm,
                         asu = asu,
                         band = null,
-                        distanceMeters = null
+                        timingAdvance = ta,
+                        distanceMeters = distance
                     ))
                 }
                 is CellInfoGsm -> {
@@ -312,7 +314,8 @@ class MainActivity : AppCompatActivity() {
                         signalDbm = dbm,
                         asu = asu,
                         band = null,
-                        distanceMeters = null
+                        timingAdvance = ta,
+                        distanceMeters = distance
                     ))
                 }
                 is CellInfoNr -> {
@@ -337,6 +340,7 @@ class MainActivity : AppCompatActivity() {
                             signalDbm = dbm,
                             asu = asu,
                             band = band,
+                            timingAdvance = ta,
                             distanceMeters = distance
                         ))
                     }
@@ -350,21 +354,32 @@ class MainActivity : AppCompatActivity() {
         return when (cellInfo) {
             is CellInfoLte -> {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                    cellInfo.cellSignalStrength.timingAdvance.takeIf { it != Int.MAX_VALUE && it != 0 }
+                    val ta = cellInfo.cellSignalStrength.timingAdvance
+                    if (ta in 1..63) ta else null   // فقط مقادیر منطقی
                 } else null
             }
             is CellInfoNr -> {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                     try {
-                        val method = cellInfo.cellSignalStrength.javaClass.getMethod("getTimingAdvance")
-                        method.invoke(cellInfo.cellSignalStrength) as? Int
-                    } catch (e: Exception) {
-                        null
-                    }
+                        val ta = cellInfo.cellSignalStrength.javaClass.getMethod("getTimingAdvance")
+                            .invoke(cellInfo.cellSignalStrength) as? Int
+                        if (ta != null && ta in 1..3840) ta else null
+                    } catch (e: Exception) { null }
+							
+					 
                 } else null
             }
             else -> null
         }
+    }
+
+    private fun calculateDistance(ta: Int, cellInfo: CellInfo): Int? {
+        val multiplier = when (cellInfo) {
+            is CellInfoLte -> 78     // هر واحد TA ≈ ۷۸ متر
+            is CellInfoNr -> 30      // در 5G معمولاً کمتر
+            else -> 78
+        }
+        return ta * multiplier
     }
     
     data class CellData(
@@ -376,6 +391,7 @@ class MainActivity : AppCompatActivity() {
         val signalDbm: Int,
         val asu: Int,
         val band: String?,
+        val timingAdvance: Int? = null,
         val distanceMeters: Int? = null
     )
 
