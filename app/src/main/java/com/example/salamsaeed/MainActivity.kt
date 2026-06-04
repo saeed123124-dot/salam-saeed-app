@@ -6,8 +6,9 @@ import android.graphics.Color
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
-import android.telephony.*
+import android.telephony.TelephonyManager
 import android.view.Gravity
+import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
@@ -26,19 +27,19 @@ class MainActivity : AppCompatActivity() {
         mainLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
-            setPadding(30, 60, 30, 60)
+            setPadding(40, 80, 40, 80)
         }
 
         val title = TextView(this).apply {
             text = "سلام سعید"
-            textSize = 32f
+            textSize = 34f
             setTextColor(Color.BLACK)
         }
 
         infoText = TextView(this).apply {
-            textSize = 16f
+            textSize = 17f
             setTextColor(Color.DKGRAY)
-            text = "در حال دریافت اطلاعات..."
+            text = "در حال دریافت اطلاعات شبکه..."
         }
 
         mainLayout.addView(title)
@@ -47,69 +48,59 @@ class MainActivity : AppCompatActivity() {
 
         telephonyManager = getSystemService(TELEPHONY_SERVICE) as TelephonyManager
 
-        val permissions = arrayOf(
-            Manifest.permission.READ_PHONE_STATE,
-            Manifest.permission.ACCESS_COARSE_LOCATION
-        )
-
-        if (permissions.any { ActivityCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED }) {
-            ActivityCompat.requestPermissions(this, permissions, 103)
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.READ_PHONE_STATE) != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this, 
+                arrayOf(Manifest.permission.READ_PHONE_STATE, Manifest.permission.ACCESS_COARSE_LOCATION), 101)
         } else {
-            startUpdating()
+            startUpdatingNetworkInfo()
         }
     }
 
-    private fun startUpdating() {
+    private fun startUpdatingNetworkInfo() {
         handler.post(object : Runnable {
             override fun run() {
                 updateNetworkInfo()
-                handler.postDelayed(this, 3000)
+                handler.postDelayed(this, 2500) // هر ۲.۵ ثانیه
             }
         })
     }
 
     private fun updateNetworkInfo() {
         if (ActivityCompat.checkSelfPermission(this, Manifest.permission.READ_PHONE_STATE) != PackageManager.PERMISSION_GRANTED) {
-            infoText.text = "⚠️ مجوزهای لازم داده نشده است"
+            infoText.text = "⚠️ مجوز READ_PHONE_STATE داده نشده است"
             return
         }
 
         val sb = StringBuilder()
 
-        // اطلاعات اصلی
-        sb.append("📱 اپراتور: ${telephonyManager?.networkOperatorName ?: "نامشخص"}\n")
-        sb.append("🌐 نوع شبکه: ${getNetworkType()}\n")
-
-        val operator = telephonyManager?.networkOperator
-        sb.append("🌍 MCC: ${operator?.take(3) ?: "-"} | MNC: ${operator?.drop(3) ?: "-"}\n\n")
-
-        // اطلاعات سیم‌کارت‌ها
-        try {
-            val subscriptionManager = getSystemService(TELEPHONY_SUBSCRIPTION_SERVICE) as SubscriptionManager
-            val subs = subscriptionManager.activeSubscriptionInfoList
-
-            subs?.forEach { sub ->
-                val slot = sub.simSlotIndex + 1
-                sb.append("🔴 سیم‌کارت $slot: ${sub.displayName}\n")
-            }
-        } catch (e: Exception) {
-            sb.append("اطلاعات سیم‌کارت در دسترس نیست\n")
+        val operatorName = telephonyManager?.networkOperatorName ?: "نامشخص"
+        val simState = when (telephonyManager?.simState) {
+            TelephonyManager.SIM_STATE_READY -> "آماده"
+            TelephonyManager.SIM_STATE_ABSENT -> "سیم‌کارت وجود ندارد"
+            TelephonyManager.SIM_STATE_PIN_REQUIRED -> "نیاز به PIN"
+            else -> "نامشخص"
         }
 
-        // اطلاعات سلول
-        sb.append("\n📍 اطلاعات BTS:\n")
-        val cellInfoStr = getCellInfo()
-        sb.append(cellInfoStr)
+        val networkType = getNetworkType()
+
+        sb.append("📱 اپراتور: $operatorName\n")
+        sb.append("🔋 وضعیت سیم‌کارت: $simState\n")
+        sb.append("🌐 نوع شبکه: $networkType\n")
+
+        val signalDbm = getSignalStrengthDbm()
+        sb.append("📶 قدرت سیگنال: $signalDbm dBm\n")
 
         infoText.text = sb.toString()
 
-        // تشخیص جمر
-        if (isSignalWeak()) {
+        // تشخیص جمر یا قطع سیگنال (زیر -110 dBm قرمز شود)
+        if (signalDbm < -110) {
             mainLayout.setBackgroundColor(Color.RED)
             infoText.setTextColor(Color.WHITE)
+            title?.setTextColor(Color.WHITE) // عنوان هم سفید شود
         } else {
             mainLayout.setBackgroundColor(Color.WHITE)
             infoText.setTextColor(Color.DKGRAY)
+            title?.setTextColor(Color.BLACK)
         }
     }
 
@@ -121,45 +112,32 @@ class MainActivity : AppCompatActivity() {
             TelephonyManager.NETWORK_TYPE_UMTS -> "3G"
             TelephonyManager.NETWORK_TYPE_EDGE -> "2G EDGE"
             TelephonyManager.NETWORK_TYPE_GPRS -> "2G"
-            else -> "نامشخص"
+            else -> "نامشخص / وای‌فای"
         }
     }
 
-    private fun getCellInfo(): String {
-        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
-            return "   نیاز به مجوز لوکیشن\n"
-        }
-
-        val cellInfos = telephonyManager?.allCellInfo ?: return "   اطلاعات سلول موجود نیست\n"
-
-        val sb = StringBuilder()
-        for (cell in cellInfos) {
-            when (cell) {
-                is CellInfoLte -> {
-                    val id = cell.cellIdentity as CellIdentityLte
-                    sb.append("   Cell ID: ${id.cid}\n")
-                    sb.append("   TAC: ${id.tac}\n")
-                    sb.append("   Signal: ${cell.cellSignalStrength.dbm} dBm\n\n")
-                }
-                is CellInfoNr -> {
-                    val id = cell.cellIdentity as CellIdentityNr
-                    sb.append("   5G Cell ID: ${id.nci}\n")
-                    sb.append("   Signal: ${cell.cellSignalStrength.dbm} dBm\n\n")
-                }
+    private fun getSignalStrengthDbm(): Int {
+        val signalStrength = telephonyManager?.signalStrength ?: return -999
+        return try {
+            // روش جدیدتر برای دریافت dBm
+            val field = signalStrength.javaClass.getDeclaredField("mLevel")
+            field.isAccessible = true
+            val level = field.getInt(signalStrength)
+            when (level) {
+                4 -> -85
+                3 -> -95
+                2 -> -105
+                1 -> -115
+                else -> -120
             }
-        }
-        return if (sb.isEmpty()) "   اطلاعات سلول یافت نشد\n" else sb.toString()
-    }
-
-    private fun isSignalWeak(): Boolean {
-        val signal = telephonyManager?.signalStrength?.level ?: 0
-        return signal <= 1
-    }
-
-    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == 103 && grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-            startUpdating()
+        } catch (e: Exception) {
+            -110 // مقدار پیش‌فرض
         }
     }
+
+    // متغیر title رو تعریف کنیم
+    private var title: TextView? = null
+
+    // در onCreate بعد از ساخت title اضافه کن:
+    // title = TextView(...)   ← این خط رو داخل onCreate بعد از ساخت title اضافه کن
 }
