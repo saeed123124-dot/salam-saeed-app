@@ -16,6 +16,9 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import java.text.SimpleDateFormat
 import java.util.*
+import android.telephony.CellSignalStrengthLte
+import android.telephony.CellSignalStrengthNr
+import android.telephony.CellIdentityNr
 
 class MainActivity : AppCompatActivity() {
 
@@ -325,11 +328,11 @@ class MainActivity : AppCompatActivity() {
 				    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
 				        val identity = cellInfo.cellIdentity as? CellIdentityNr ?: continue
 				        val signal = cellInfo.cellSignalStrength as? CellSignalStrengthNr ?: continue
-				        
+				
 				        val dbm = signal.dbm
 				        val asu = if (dbm != -2300 && dbm != Int.MIN_VALUE) (dbm + 141).coerceIn(0, 99) else -1
 				        val band = getNrBandFromNrarfcn(identity.nrarfcn)
-				        
+				
 				        val ta = getTimingAdvance(cellInfo)
 				        val distance = ta?.let { calculateDistance(it, cellInfo) }
 				
@@ -356,30 +359,32 @@ class MainActivity : AppCompatActivity() {
 	    return when (cellInfo) {
 	        is CellInfoLte -> {
 	            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-	                val ta = cellInfo.cellSignalStrength.timingAdvance
-	                // TA معتبر در LTE معمولاً بین 0 تا 1282 است
-	                if (ta >= 0 && ta <= 1282) ta else null
+	                val lteSignal = cellInfo.cellSignalStrength as? CellSignalStrengthLte
+	                val ta = lteSignal?.timingAdvance ?: -1
+	                if (ta in 0..1282) ta else null
 	            } else null
 	        }
+	
 	        is CellInfoNr -> {
 	            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
 	                try {
-	                    val signalNr = cellInfo.cellSignalStrength as? CellSignalStrengthNr ?: return null
-	                    val ta = signalNr.timingAdvance  // روش مستقیم (بهتر از reflection)
-	                    if (ta >= 0 && ta <= 3840) ta else null
+	                    val nrSignal = cellInfo.cellSignalStrength as? CellSignalStrengthNr
+	                    val ta = nrSignal?.timingAdvance ?: -1
+	                    if (ta in 0..3840) ta else null
 	                } catch (e: Exception) {
 	                    null
 	                }
 	            } else null
 	        }
+	
 	        else -> null
 	    }
 	}
 
     private fun calculateDistance(ta: Int, cellInfo: CellInfo): Int {
 	    val metersPerTa = when (cellInfo) {
-	        is CellInfoLte -> 78      // استاندارد LTE
-	        is CellInfoNr -> 30       // در 5G معمولاً کوچکتر است
+	        is CellInfoLte -> 78
+	        is CellInfoNr -> 30
 	        else -> 78
 	    }
 	    return ta * metersPerTa
