@@ -27,14 +27,12 @@ class MainActivity : AppCompatActivity() {
 
     private val dateFormat = SimpleDateFormat("yyyy/MM/dd HH:mm:ss", Locale.US)
 
-    // گوش‌دهنده تغییرات سیگنال
     private val phoneStateListener = object : PhoneStateListener() {
         override fun onSignalStrengthsChanged(signalStrength: SignalStrength) {
             updateAllInfo()
         }
     }
 
-    // درخواست مجوزها به روش جدید
     private val requestPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { permissions ->
             val phoneGranted = permissions[Manifest.permission.READ_PHONE_STATE] ?: false
@@ -44,11 +42,10 @@ class MainActivity : AppCompatActivity() {
                 startMonitoring()
             } else {
                 generalInfoText.text = "⚠️ برای نمایش کامل اطلاعات دکل‌ها، هر دو مجوز لازم است."
-                // اگر فقط READ_PHONE_STATE گرفته شود، اطلاعات پایه نشان داده می‌شود
                 if (phoneGranted) {
-                    startMonitoring() // حداقل اطلاعات عمومی را بگیریم
+                    startMonitoring()
                 } else {
-                    finishAffinity() // اگر مجوز اصلی رد شود، برنامه بسته شود
+                    finishAffinity()
                 }
             }
         }
@@ -56,7 +53,6 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // رابط کاربری با اسکرول
         val scrollView = ScrollView(this)
         mainLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -71,14 +67,12 @@ class MainActivity : AppCompatActivity() {
         }
         titleView = title
 
-        // بخش اطلاعات عمومی
         generalInfoText = TextView(this).apply {
             textSize = 15f
             setTextColor(Color.DKGRAY)
             text = "در حال دریافت اطلاعات..."
         }
 
-        // بخش اطلاعات دکل‌ها
         towerInfoText = TextView(this).apply {
             textSize = 14f
             setTextColor(Color.DKGRAY)
@@ -95,7 +89,6 @@ class MainActivity : AppCompatActivity() {
 
         telephonyManager = getSystemService(TELEPHONY_SERVICE) as TelephonyManager
 
-        // بررسی مجوزها
         checkPermissions()
     }
 
@@ -115,20 +108,18 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun startMonitoring() {
-        // استفاده از PhoneStateListener برای کاهش مصرف باتری
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_PHONE_STATE) == PackageManager.PERMISSION_GRANTED) {
             telephonyManager?.listen(phoneStateListener, PhoneStateListener.LISTEN_SIGNAL_STRENGTHS)
         }
         updateAllInfo()
     }
 
-    @SuppressLint("MissingPermission") // مجوزها قبلاً بررسی شده‌اند
+    @SuppressLint("MissingPermission")
     private fun updateAllInfo() {
         val now = dateFormat.format(Date())
 
         val sbGeneral = StringBuilder()
 
-        // اطلاعات عمومی شبکه
         val operatorName = telephonyManager?.networkOperatorName ?: "نامشخص"
         val networkOperator = telephonyManager?.networkOperator ?: ""
         val mcc = if (networkOperator.length >= 3) networkOperator.substring(0, 3) else "نامشخص"
@@ -151,7 +142,6 @@ class MainActivity : AppCompatActivity() {
         }
         val roaming = if (telephonyManager?.isNetworkRoaming == true) "بله (خارج از شبکه خانگی)" else "خیر"
 
-        // قدرت سیگنال کلی
         val signalDbm = getSignalStrengthDbm()
         val signalAsu = convertDbmToAsu(signalDbm, telephonyManager?.voiceNetworkType ?: 0)
 
@@ -174,7 +164,6 @@ class MainActivity : AppCompatActivity() {
 
         generalInfoText.text = sbGeneral.toString()
 
-        // تغییر رنگ بر اساس قدرت سیگنال (فقط اگر قابل خواندن باشد)
         if (signalDbm != -2300) {
             when {
                 signalDbm < -110 -> mainLayout.setBackgroundColor(Color.RED)
@@ -206,8 +195,6 @@ class MainActivity : AppCompatActivity() {
         towerInfoText.text = towerSb.toString()
     }
 
-    // ------------- توابع کمکی -------------
-
     private fun getSignalStrengthDbm(): Int {
         val ss = telephonyManager?.signalStrength ?: return -2300
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -218,7 +205,6 @@ class MainActivity : AppCompatActivity() {
                 -2300
             }
         } else {
-            // روش قدیمی
             try {
                 val method = SignalStrength::class.java.getDeclaredMethod("getDbm")
                 method.isAccessible = true
@@ -235,7 +221,7 @@ class MainActivity : AppCompatActivity() {
             TelephonyManager.NETWORK_TYPE_GSM,
             TelephonyManager.NETWORK_TYPE_GPRS,
             TelephonyManager.NETWORK_TYPE_EDGE -> (dbm + 113) / 2
-            else -> dbm + 141  // LTE, NR, etc.
+            else -> dbm + 141
         }.coerceIn(0, 99)
     }
 
@@ -280,8 +266,8 @@ class MainActivity : AppCompatActivity() {
                     val band = getLteBandFromEarfcn(identity.earfcn)
                     cells.add(CellData(
                         type = "LTE",
-                        cellId = identity.ci.toString(),
-                        lac = identity.tac.toString(), // LTE از TAC بجای LAC استفاده می‌کند
+                        cellId = identity.ci.toString(),  // ci برای LTE درست است
+                        lac = identity.tac.toString(),
                         mcc = identity.mccString ?: "?",
                         mnc = identity.mncString ?: "?",
                         signalDbm = dbm,
@@ -296,7 +282,7 @@ class MainActivity : AppCompatActivity() {
                     val asu = if (dbm != -2300) (dbm + 141).coerceIn(0, 99) else -1
                     cells.add(CellData(
                         type = "WCDMA",
-                        cellId = identity.ci.toString(),
+                        cellId = identity.cid.toString(),  // تصحیح: cid به جای ci
                         lac = identity.lac.toString(),
                         mcc = identity.mccString ?: "?",
                         mnc = identity.mncString ?: "?",
@@ -312,7 +298,7 @@ class MainActivity : AppCompatActivity() {
                     val asu = if (dbm != -2300) (dbm + 113) / 2 else -1
                     cells.add(CellData(
                         type = "GSM",
-                        cellId = identity.ci.toString(),
+                        cellId = identity.cid.toString(),  // تصحیح: cid به جای ci
                         lac = identity.lac.toString(),
                         mcc = identity.mccString ?: "?",
                         mnc = identity.mncString ?: "?",
@@ -322,28 +308,29 @@ class MainActivity : AppCompatActivity() {
                     ))
                 }
                 is CellInfoNr -> {
-                    val identity = cellInfo.cellIdentity
-                    val signal = cellInfo.cellSignalStrength
-                    val dbm = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) signal.dbm else -2300
-                    val asu = if (dbm != -2300) (dbm + 141).coerceIn(0, 99) else -1
-                    val band = getNrBandFromNrarfcn(identity.nrarfcn)
-                    cells.add(CellData(
-                        type = "NR (5G)",
-                        cellId = identity.nci.toString(),
-                        lac = identity.tac.toString(),
-                        mcc = identity.mccString ?: "?",
-                        mnc = identity.mncString ?: "?",
-                        signalDbm = dbm,
-                        asu = asu,
-                        band = band
-                    ))
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        val identity = cellInfo.cellIdentity
+                        val signal = cellInfo.cellSignalStrength
+                        val dbm = signal.dbm
+                        val asu = if (dbm != -2300) (dbm + 141).coerceIn(0, 99) else -1
+                        val band = getNrBandFromNrarfcn(identity.nrarfcn)
+                        cells.add(CellData(
+                            type = "NR (5G)",
+                            cellId = identity.nci.toString(),
+                            lac = identity.tac.toString(),
+                            mcc = identity.mccString ?: "?",
+                            mnc = identity.mncString ?: "?",
+                            signalDbm = dbm,
+                            asu = asu,
+                            band = band
+                        ))
+                    }
                 }
             }
         }
         return cells
     }
 
-    // کلاس داده برای دکل‌ها
     data class CellData(
         val type: String,
         val cellId: String,
@@ -352,10 +339,9 @@ class MainActivity : AppCompatActivity() {
         val mnc: String,
         val signalDbm: Int,
         val asu: Int,
-        val band: String? // مثلاً "B3 (1800)"
+        val band: String?
     )
 
-    // تخمین باند LTE از EARFCN
     private fun getLteBandFromEarfcn(earfcn: Int): String? {
         if (earfcn <= 0) return null
         return when {
@@ -386,7 +372,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // تخمین باند NR از NR-ARFCN
     private fun getNrBandFromNrarfcn(nrarfcn: Int): String? {
         if (nrarfcn <= 0) return null
         return when {
