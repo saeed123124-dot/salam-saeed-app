@@ -323,7 +323,7 @@ class MainActivity : AppCompatActivity() {
                 }
                 is CellInfoNr -> {
 				    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-				        val identity = cellInfo.cellIdentity
+				        val identity = cellInfo.cellIdentity as? CellIdentityNr ?: continue
 				        val signal = cellInfo.cellSignalStrength
 				        val dbm = signal.dbm
 				        val asu = if (dbm != -2300) (dbm + 141).coerceIn(0, 99) else -1
