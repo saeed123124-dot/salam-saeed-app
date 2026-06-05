@@ -15,7 +15,7 @@
 
     <application
         android:allowBackup="false"
-        android:label="سلام سعید"
+        android:label="دیده بان ۱۰۱"
         android:theme="@style/Theme.AppCompat.Light.NoActionBar"
         tools:targetApi="34">
 
