@@ -2,8 +2,16 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
+    <!-- مجوزهای قبلی -->
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+
+    <!-- مجوز سرویس پیش‌زمینه (برای اندروید ۹ به بالا) -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <!-- نوع سرویس ویژه برای استفاده خاص (توضیح داده خواهد شد) -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <!-- مجوز نمایش اعلان در اندروید ۱۳+ -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application
         android:allowBackup="false"
@@ -19,5 +27,15 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- تعریف سرویس پایش سیگنال -->
+        <service
+            android:name=".SignalMonitorService"
+            android:foregroundServiceType="specialUse"
+            android:exported="false">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="monitoring_cellular_signal_for_jamming_detection" />
+        </service>
     </application>
 </manifest>
