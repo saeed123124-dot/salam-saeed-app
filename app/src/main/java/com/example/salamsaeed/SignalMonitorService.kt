@@ -28,14 +28,12 @@ class SignalMonitorService : Service() {
     companion object {
         const val CHANNEL_ID = "signal_monitor_channel"
         const val NOTIFICATION_ID = 101
-        var isRunning = false   // وضعیت اجرای سرویس برای استفاده در Activity
+        var isRunning = false
     }
 
     private lateinit var telephonyManager: TelephonyManager
     private lateinit var notificationManager: NotificationManager
     private var mediaPlayer: MediaPlayer? = null
-
-    // Handler برای مدیریت تأخیر در تشخیص قطعی سیگنال
     private val handler = Handler(Looper.getMainLooper())
     private var outOfServiceCheckRunnable: Runnable? = null
 
@@ -58,19 +56,15 @@ class SignalMonitorService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        // شروع سرویس به صورت پیش‌زمینه با اعلان
         startForeground(NOTIFICATION_ID, buildForegroundNotification())
-
-        // ثبت شنونده وضعیت شبکه و قدرت سیگنال
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_PHONE_STATE) == PackageManager.PERMISSION_GRANTED) {
             telephonyManager.listen(phoneStateListener,
                 PhoneStateListener.LISTEN_SERVICE_STATE or
                 PhoneStateListener.LISTEN_SIGNAL_STRENGTHS)
         } else {
-            stopSelf() // اگر مجوز تلفن نباشد سرویس بسته شود
+            stopSelf()
         }
-
-        return START_STICKY  // سعی کند دوباره راه‌اندازی شود اگر کشته شد
+        return START_STICKY
     }
 
     override fun onDestroy() {
@@ -83,27 +77,24 @@ class SignalMonitorService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
-    // ------------------------------------------------------------------------
-    // بررسی وضعیت و تصمیم‌گیری برای هشدار
-    // ------------------------------------------------------------------------
     private fun checkSignalCondition() {
-        val serviceState = telephonyManager.serviceState
+        val serviceState = telephonyManager.serviceState   // ServiceState?
         val signalDbm = getSignalStrengthDbm()
 
-        val isOutOfService = serviceState == ServiceState.STATE_OUT_OF_SERVICE
-        val isPowerOff = serviceState == ServiceState.STATE_POWER_OFF
-        val signalLost = (signalDbm <= -120 || signalDbm == -2300)  // -2300 یعنی نامعتبر
+        // تصحیح: استفاده از ?.state برای دریافت وضعیت به صورت Int
+        val currentState = serviceState?.state
+        val isOutOfService = currentState == ServiceState.STATE_OUT_OF_SERVICE
+        val isPowerOff = currentState == ServiceState.STATE_POWER_OFF
+        val signalLost = (signalDbm <= -120 || signalDbm == -2300)
 
-        // اگر خط قطع باشد یا تلفن خاموش باشد یا سیگنال عملاً صفر
         if (isOutOfService || isPowerOff || signalLost) {
-            // با یک تأخیر کوتاه (۳ ثانیه) بررسی می‌کنیم که آیا وضعیت همچنان مشکل‌دار است یا موقت بوده
             if (outOfServiceCheckRunnable == null) {
                 outOfServiceCheckRunnable = Runnable {
-                    // دوباره وضعیت را چک کن
                     val freshState = telephonyManager.serviceState
                     val freshDbm = getSignalStrengthDbm()
-                    if (freshState == ServiceState.STATE_OUT_OF_SERVICE ||
-                        freshState == ServiceState.STATE_POWER_OFF ||
+                    // تصحیح: مقایسه با freshState?.state
+                    if (freshState?.state == ServiceState.STATE_OUT_OF_SERVICE ||
+                        freshState?.state == ServiceState.STATE_POWER_OFF ||
                         freshDbm <= -120 || freshDbm == -2300) {
                         triggerAlarm()
                     }
@@ -112,7 +103,6 @@ class SignalMonitorService : Service() {
                 handler.postDelayed(outOfServiceCheckRunnable!!, 3000)
             }
         } else {
-            // اگر وضعیت عادی شد، کار تأخیری را لغو و آلارم را قطع کن
             cancelOutOfServiceCheck()
             stopAlarm()
         }
@@ -141,14 +131,9 @@ class SignalMonitorService : Service() {
         }
     }
 
-    // ------------------------------------------------------------------------
-    // پخش آلارم صوتی و نمایش اعلان هشدار
-    // ------------------------------------------------------------------------
     private fun triggerAlarm() {
-        // فقط اگر آلارم از قبل فعال نیست
         if (mediaPlayer?.isPlaying == true) return
 
-        // ۱. نمایش اعلان با متن "آماده باشید 123"
         val alarmIntent = Intent(this, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
         }
@@ -164,14 +149,12 @@ class SignalMonitorService : Service() {
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setContentIntent(pendingIntent)
             .setAutoCancel(false)
-            .setOngoing(true)    // تا زمانی که کاربر اقدامی نکند باقی بماند
+            .setOngoing(true)
             .build()
 
         notificationManager.notify(999, notification)
 
-        // ۲. پخش صدای آلارم (حلقه‌ای)
         try {
-            // استفاده از صدای پیش‌فرض آلارم سیستم
             val alarmUri: Uri = Settings.System.DEFAULT_ALARM_ALERT_URI
             mediaPlayer = MediaPlayer().apply {
                 setDataSource(this@SignalMonitorService, alarmUri)
@@ -185,20 +168,14 @@ class SignalMonitorService : Service() {
     }
 
     private fun stopAlarm() {
-        // توقف و رهاسازی MediaPlayer
         mediaPlayer?.apply {
             if (isPlaying) stop()
             release()
         }
         mediaPlayer = null
-
-        // حذف اعلان هشدار
         notificationManager.cancel(999)
     }
 
-    // ------------------------------------------------------------------------
-    // اعلان پیش‌زمینه سرویس (در نوار وضعیت)
-    // ------------------------------------------------------------------------
     private fun buildForegroundNotification() = NotificationCompat.Builder(this, CHANNEL_ID)
         .setSmallIcon(android.R.drawable.ic_menu_manage)
         .setContentTitle("پایش سیگنال")
