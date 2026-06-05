@@ -16,6 +16,7 @@
     <application
         android:allowBackup="false"
         android:label="دیده بان ۱۰۱"
+        android:icon="@mipmap/ic_launcher"
         android:theme="@style/Theme.AppCompat.Light.NoActionBar"
         tools:targetApi="34">
 
