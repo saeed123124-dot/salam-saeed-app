@@ -2,15 +2,18 @@ package com.example.salamsaeed
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.os.Build
 import android.os.Bundle
 import android.telephony.*
 import android.view.Gravity
+import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
@@ -22,6 +25,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var mainLayout: LinearLayout
     private lateinit var generalInfoText: TextView
     private lateinit var towerInfoText: TextView
+    private lateinit var btnToggleService: Button   // *** دکمه فعال/غیرفعال ***
     private var titleView: TextView? = null
     private var telephonyManager: TelephonyManager? = null
 
@@ -37,6 +41,10 @@ class MainActivity : AppCompatActivity() {
         registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { permissions ->
             val phoneGranted = permissions[Manifest.permission.READ_PHONE_STATE] ?: false
             val locationGranted = permissions[Manifest.permission.ACCESS_FINE_LOCATION] ?: false
+            // اختیاری: مجوز اعلان (مهم نیست گرانت نشود)
+            val notifGranted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                permissions[Manifest.permission.POST_NOTIFICATIONS] ?: false
+            } else true
 
             if (phoneGranted && locationGranted) {
                 startMonitoring()
@@ -73,6 +81,14 @@ class MainActivity : AppCompatActivity() {
             text = "در حال دریافت اطلاعات..."
         }
 
+        // *** دکمه فعال/غیرفعال کردن پایش پس‌زمینه ***
+        btnToggleService = Button(this).apply {
+            text = if (SignalMonitorService.isRunning) "غیر فعال" else "فعال"
+            setOnClickListener {
+                toggleBackgroundService()
+            }
+        }
+
         towerInfoText = TextView(this).apply {
             textSize = 14f
             setTextColor(Color.DKGRAY)
@@ -82,6 +98,7 @@ class MainActivity : AppCompatActivity() {
 
         mainLayout.addView(title)
         mainLayout.addView(generalInfoText)
+        mainLayout.addView(btnToggleService)   // اضافه کردن دکمه
         mainLayout.addView(towerInfoText)
 
         scrollView.addView(mainLayout)
@@ -92,6 +109,30 @@ class MainActivity : AppCompatActivity() {
         checkPermissions()
     }
 
+    // *** متد تغییر وضعیت سرویس ***
+    private fun toggleBackgroundService() {
+        val intent = Intent(this, SignalMonitorService::class.java)
+        if (SignalMonitorService.isRunning) {
+            stopService(intent)
+            btnToggleService.text = "فعال"
+            Toast.makeText(this, "پایش پس‌زمینه متوقف شد", Toast.LENGTH_SHORT).show()
+        } else {
+            // قبل از شروع سرویس، چک مجوز POST_NOTIFICATIONS در اندروید ۱۳+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
+                    != PackageManager.PERMISSION_GRANTED) {
+                    // درخواست مجوز اعلان
+                    requestPermissionLauncher.launch(arrayOf(Manifest.permission.POST_NOTIFICATIONS))
+                    // پس از برگشت، ممکن است مجوز داده شده باشد؛ اما سرویس حتی بدون مجوز هم کار می‌کند
+                }
+            }
+            ContextCompat.startForegroundService(this, intent)
+            btnToggleService.text = "غیر فعال"
+            Toast.makeText(this, "پایش پس‌زمینه آغاز شد", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    // بررسی مجوزها (افزودن POST_NOTIFICATIONS)
     private fun checkPermissions() {
         val phonePerm = ContextCompat.checkSelfPermission(this, Manifest.permission.READ_PHONE_STATE)
         val locPerm = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
@@ -99,6 +140,14 @@ class MainActivity : AppCompatActivity() {
         val needed = mutableListOf<String>()
         if (phonePerm != PackageManager.PERMISSION_GRANTED) needed.add(Manifest.permission.READ_PHONE_STATE)
         if (locPerm != PackageManager.PERMISSION_GRANTED) needed.add(Manifest.permission.ACCESS_FINE_LOCATION)
+
+        // درخواست مجوز اعلان در اندروید ۱۳+ (اختیاری ولی بهتر است)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
+                != PackageManager.PERMISSION_GRANTED) {
+                needed.add(Manifest.permission.POST_NOTIFICATIONS)
+            }
+        }
 
         if (needed.isEmpty()) {
             startMonitoring()
