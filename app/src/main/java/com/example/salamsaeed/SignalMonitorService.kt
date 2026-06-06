@@ -145,7 +145,7 @@ class SignalMonitorService : Service() {
         val notification = NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_dialog_alert)
             .setContentTitle("هشدار قطع سیگنال")
-            .setContentText("آماده باشید 123")
+            .setContentText("هشدار قطع سیگنال. آماده باش در محل قرار...")
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setContentIntent(pendingIntent)
             .setAutoCancel(false)
