@@ -69,7 +69,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         val title = TextView(this).apply {
-            text = "سلام سعید"
+            text = "دیده بان ۱۰۱:"
             textSize = 34f
             setTextColor(Color.BLACK)
         }
@@ -189,7 +189,7 @@ class MainActivity : AppCompatActivity() {
             TelephonyManager.DATA_DISCONNECTED -> "قطع"
             else -> "نامشخص"
         }
-        val roaming = if (telephonyManager?.isNetworkRoaming == true) "بله (خارج از شبکه خانگی)" else "خیر"
+        val roaming = if (telephonyManager?.isNetworkRoaming == true) "بله (خارج از شبکه محلی)" else "خیر"
 
         val signalDbm = getSignalStrengthDbm()
         val signalAsu = convertDbmToAsu(signalDbm, telephonyManager?.voiceNetworkType ?: 0)
@@ -310,14 +310,15 @@ class MainActivity : AppCompatActivity() {
 
         for (cellInfo in allCellInfo) {
             when (cellInfo) {
+                val ta = getTimingAdvance(cellInfo)
+                val distance = ta?.let { it * 78 } // تقریبی ۷۸ متر برای هر واحد TA در LTE
+                
                 is CellInfoLte -> {
                     val identity = cellInfo.cellIdentity
                     val signal = cellInfo.cellSignalStrength
                     val dbm = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) signal.dbm else -2300
                     val asu = if (dbm != -2300) (dbm + 141).coerceIn(0, 99) else -1
                     val band = getLteBandFromEarfcn(identity.earfcn)
-                    val ta = getTimingAdvance(cellInfo)
-                    val distance = ta?.let { it * 78 } // تقریبی ۷۸ متر برای هر واحد TA در LTE
                     cells.add(CellData(
                         type = "LTE",
                         cellId = identity.ci.toString(),  // ci برای LTE درست است
