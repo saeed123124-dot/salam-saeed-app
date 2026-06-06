@@ -386,7 +386,7 @@ class MainActivity : AppCompatActivity() {
                             signalDbm = dbm,
                             asu = asu,
                             band = band,
-                            distanceMeters = distanceMeters = getTimingAdvance(cellInfo)?.let { it * 78 } //distance
+                            distanceMeters = getTimingAdvance(cellInfo)?.let { it * 78 } //distance
                         ))
                     }
                 }
