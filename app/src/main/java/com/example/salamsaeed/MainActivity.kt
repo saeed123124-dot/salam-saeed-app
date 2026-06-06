@@ -309,8 +309,8 @@ class MainActivity : AppCompatActivity() {
         val allCellInfo = telephonyManager?.allCellInfo ?: return cells
 
         for (cellInfo in allCellInfo) {
-            val ta = getTimingAdvance(cellInfo)
-            val distance = ta?.let { it * 78 } // تقریبی ۷۸ متر برای هر واحد TA در LTE
+            //val ta = getTimingAdvance(cellInfo)
+            //val distance = ta?.let { it * 78 } // تقریبی ۷۸ متر برای هر واحد TA در LTE
             when (cellInfo) {
                 is CellInfoLte -> {
                     val identity = cellInfo.cellIdentity
@@ -327,7 +327,7 @@ class MainActivity : AppCompatActivity() {
                         signalDbm = dbm,
                         asu = asu,
                         band = band,
-                        distanceMeters = distance
+                        distanceMeters = getTimingAdvance(cellInfo)?.let { it * 78 } //distance
                     ))
                 }
                 is CellInfoWcdma -> {
@@ -386,7 +386,7 @@ class MainActivity : AppCompatActivity() {
                             signalDbm = dbm,
                             asu = asu,
                             band = band,
-                            distanceMeters = distance
+                            distanceMeters = distanceMeters = getTimingAdvance(cellInfo)?.let { it * 78 } //distance
                         ))
                     }
                 }
